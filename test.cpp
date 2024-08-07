@@ -13,20 +13,18 @@ int main() {
         .f = test_f
     };
 
-    chrono::time_point<chrono::system_clock> start, end;
-    start = chrono::system_clock::now();
+    /*chrono::time_point<chrono::system_clock> start, end;
+    start = chrono::system_clock::now();*/
     FGFunction f(test_rawX, &data);
     double out = f.runBFGS(test_rawX);
-    end = chrono::system_clock::now();
+    /*end = chrono::system_clock::now();
     chrono::duration<double> time = end - start;
-    printf("%lf", time.count());
+    printf("%lf", time.count());*/
 
-    /*
     printf("minimisation = %lf\n", out);
     for (double i : test_rawX)
         printf("%lf ", i);
     printf("\ndone\n");
-*/
 
     // OptimLib stuff, couldn't get it to work well
     /*
