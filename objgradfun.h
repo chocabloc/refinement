@@ -1,28 +1,33 @@
 //#include "mex.h"
 #include <bits/stdc++.h>
-#include <math.h>
+#include <cmath>
 #include "Eigen/Core"
-#define OPTIM_ENABLE_EIGEN_WRAPPERS
-#include "OptimLib/optim.hpp"
+//#define OPTIM_ENABLE_EIGEN_WRAPPERS
+//#include "OptimLib/optim.hpp"
+#include "LBFGSpp/LBFGS.h"
 #include "constraints.h"
-#include "testdata.h"
 
 static void printvec(const Eigen::VectorXd& v) {
-    for (int i = 0; i < v.size(); i++) {
-        printf("%.2lf ", v[i]);
-    }
+    for (double i : v)
+        printf("%.4lf ", i);
     printf("\n");
 }
-/*
-    TODO: is it a good idea to take X as a flat array?
-          certainly makes translation easier
-*/
+
+class FGData {
+public:
+    DistConstraints *E, *L, *U;
+    double *w, *f;
+};
 
 // calculates value of objective function at X
-static double objfun(const Eigen::VectorXd& X, DistConstraints& E, DistConstraints& L,
-                     DistConstraints& U, double *w, double *f) {
+static double objfun(const Eigen::VectorXd& X, FGData* dat) {
     
     double ret = 0.0, temp;
+
+    auto& E = *(dat->E);
+    auto& L= *(dat->L);
+    auto& U = *(dat->U);
+    auto w = dat->w, f = dat->f;
 
     // dimensions and size of X
     int d = 3, n = X.size()/d;
@@ -110,11 +115,15 @@ static double objfun(const Eigen::VectorXd& X, DistConstraints& E, DistConstrain
 }
 
 // calculates value of gradient of objective function at X
-static void gradfun(const Eigen::VectorXd& X, DistConstraints& E, DistConstraints& L,
-                    DistConstraints& U, double* w, double* f,
-                    Eigen::VectorXd* G) {
+static void gradfun(const Eigen::VectorXd& X, FGData* dat, Eigen::VectorXd* G) {
     
     double temp;
+
+    G->setZero();
+    auto& E = *(dat->E);
+    auto& L= *(dat->L);
+    auto& U = *(dat->U);
+    auto w = dat->w, f = dat->f;
 
     // dimensions and size of X
     int d = 3, n = X.size()/d;
@@ -127,47 +136,6 @@ static void gradfun(const Eigen::VectorXd& X, DistConstraints& E, DistConstraint
 
     // idk what these are
     double f_hb  = f[0], f_tau = f[1], f_tal = f[2], f_vdw = f[3];
-
-    /*double *X, *E, *L, *U, *w, *G, *f;
-    int i, j, ti, tj, type;
-    double we, wl, wu, wr, dist, sdist, temp, target, tempG;
-    double f_hb, f_tau, f_tal, f_vdw;
-
-    int ne, nl, nu, n , d;
-    
-    X  = mxGetPr(prhs[0]);
-    d  = mxGetM(prhs[0]);
-    n  = mxGetN(prhs[0]);
-    
-    
-    E = mxGetPr(prhs[1]);
-    ne = mxGetM(prhs[1]);
-    
-    
-    L = mxGetPr(prhs[2]);
-    nl = mxGetM(prhs[2]);
-    
-    U = mxGetPr(prhs[3]);
-    nu = mxGetM(prhs[3]);
-    
-    w  = mxGetPr(prhs[4]);
-    we = 2*w[0];
-    wl = 2*w[1];
-    wu = 2*w[2];
-    wr = 2*w[3];
-    
-    f = mxGetPr(prhs[5]);
-    
-    f_hb  = f[0];
-    f_tau = f[1];
-    f_tal = f[2];
-    f_vdw = f[3];*/
-    
-    /* mxArray for output */
-    //plhs[0] = mxCreateDoubleMatrix(d, n, mxREAL);
-    /* pointer to output data */
-    //G = mxGetPr(plhs[0]);
-    
     
     /* equality constraints */
     for (int i = 0 ; i < ne ; i++) {
@@ -254,92 +222,69 @@ static void gradfun(const Eigen::VectorXd& X, DistConstraints& E, DistConstraint
     }
 }
 
-class FGData {
-public:
-    DistConstraints *E, *L, *U;
-    double *w, *f;
-};
+static double fgcalc(const Eigen::VectorXd& x, Eigen::VectorXd* grad, void* dat) {
+    auto* fd = (FGData*)dat;
+    if (grad)
+        gradfun(x, fd, grad);
+    double val = objfun(x, fd);
 
-/*class FGFunction {
-public:
-    DistConstraints E, L, U;
-    double W[4], F[4];
-    FGFunction(DistConstraints& e, DistConstraints& l, DistConstraints& u,
-               double w[4], double f[4]) {
+    /*
+    printf("x = ");
+    printvec(x);
 
-        E = e; L = l; U = u;
-        for (int i = 0; i < 4; i++) {
-            W[i] = w[i];
-            F[i] = f[i];
-        }
+    if (grad) {
+        printf("g = ");
+        printvec(*grad);
     }
-    double operator()(const Eigen::VectorXd& x, Eigen::VectorXd& grad)
+    printf("(%lf)\n\n", val);
+    */
+
+    return val;
+}
+
+class FGFunction {
+public:
+    FGData* dat;
+    explicit FGFunction(Eigen::VectorXd& init_x, FGData* d) {
+        dat = d;
+
+        /*
+            re-calculate w[3] how it is done in the matlab code:
+            w(4) = ow(4)*obj/(25*trace(X0'*X0));
+        */
+        double s = 0.0, ow3 = dat->w[3];
+        for (auto a: init_x)
+            s += a*a;
+        dat->w[3] = 0.0;
+        double obval = objfun(init_x, dat),
+               k = (ow3*obval/25.0)*(1.0/s);
+        dat->w[3] = k;
+    }
+
+    double operator()(const Eigen::VectorXd& x, Eigen::VectorXd& grad) const
     {
-        gradfun(x, E, L, U, W, F, grad);
-        double val = objfun(x, E, L, U, W, F);
+        gradfun(x, dat, &grad);
+        double val = objfun(x, dat);
         //printvec(x);
         //printf("(%lf)\n\n", val);
         return val;
     }
-};*/
 
-double fgcalc(const Eigen::VectorXd& x, Eigen::VectorXd* grad, void* dat) {
-    FGData* fd = (FGData*)dat;
-    gradfun(x, *(fd->E), *(fd->L), *(fd->U), fd->w, fd->f, grad);
-    double val = objfun(x, *(fd->E), *(fd->L), *(fd->U), fd->w, fd->f);
-    //printvec(x);
-    //printf("(%lf)\n\n", val);
-    return val;
-}
+    double runBFGS(Eigen::VectorXd& init_x) {
+        double out;
 
-int main(void) {
-    test_w[3] = -0.0030;
-    printf("running...\n");
-    printf("objfun = %lf\n", objfun(test_rawX, test_equality_cons, test_lo_bounds,
-                           test_up_bounds, test_w, test_f));
-    printf("gradfun = ");
-    Eigen::VectorXd g(test_rawX.size());
-    g.setZero();
-    gradfun(test_rawX, test_equality_cons, test_lo_bounds, test_up_bounds,
-            test_w, test_f, &g);
-    for (int i = 0; i < g.size(); i++) {
-        printf("%lf ", g[i]);
+        // parameters for LBFGS
+        // TODO: maybe we need to tweak these?
+        LBFGSpp::LBFGSParam p;
+        p.max_iterations = 500;//1000;
+        //p.ftol = 1.0e-14;
+        p.linesearch = LBFGSpp::LBFGS_LINESEARCH_BACKTRACKING_WOLFE;
+        //p.epsilon = 1.0e-14;
+
+        // run the solver
+        LBFGSpp::LBFGSSolver<double, LBFGSpp::LineSearchBacktracking> solver(p);
+        solver.minimize(*this, init_x, out);
+
+        return out;
     }
-    g.setZero();
-    printf("\n\n");
-
-    // try doing the bfgs thingy
-    //FGFunction f(test_equality_cons, test_lo_bounds, test_up_bounds, test_w, test_f);
-    FGData data = {
-        .E = &test_equality_cons,
-        .L = &test_lo_bounds,
-        .U = &test_up_bounds,
-        .w = test_w,
-        .f = test_f
-    };
-    optim::algo_settings_t settings = {
-        .print_level = 1,
-    };
-    bool suc = optim::bfgs(test_rawX, fgcalc, &data, settings);
-    if (suc)
-        printf("success\n");
-    else
-        printf("failed\n");
-    printvec(test_rawX);
-
-    /*double out;
-    LBFGSpp::LBFGSParam<double> p;
-    p.max_iterations = 250;
-    p.ftol = 1.0e-6;
-    p.linesearch = LBFGSpp::LBFGS_LINESEARCH_BACKTRACKING_WOLFE;
-
-    LBFGSpp::LBFGSSolver<double, LBFGSpp::LineSearchBacktracking> solver(p);
-    solver.minimize(f, test_rawX, out);
-    printf("minimisation = %lf\n", out);
-    for (int i = 0; i < test_rawX.size(); i++) {
-        printf("%lf ", test_rawX[i]);
-    }*/
-
-    printf("\ndone\n");
-    return 0;
-}
+};
