@@ -1,8 +1,10 @@
 #include "fgfunction.h"
 #include "testdata.h"
+#include <chrono>
+using namespace std;
 
 int main() {
-    printf("running LBFGS on test data...\n");
+    //printf("running LBFGS on test data...\n");
     FGData data = {
         .E = &test_equality_cons,
         .L = &test_lo_bounds,
@@ -10,14 +12,21 @@ int main() {
         .w = test_w,
         .f = test_f
     };
+
+    chrono::time_point<chrono::system_clock> start, end;
+    start = chrono::system_clock::now();
     FGFunction f(test_rawX, &data);
     double out = f.runBFGS(test_rawX);
+    end = chrono::system_clock::now();
+    chrono::duration<double> time = end - start;
+    printf("%lf", time.count());
 
+    /*
     printf("minimisation = %lf\n", out);
     for (double i : test_rawX)
         printf("%lf ", i);
     printf("\ndone\n");
-
+*/
 
     // OptimLib stuff, couldn't get it to work well
     /*
