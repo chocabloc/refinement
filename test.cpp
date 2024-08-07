@@ -1,4 +1,4 @@
-#include "objgradfun.h"
+#include "fgfunction.h"
 #include "testdata.h"
 
 int main() {
