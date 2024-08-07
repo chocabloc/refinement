@@ -1,23 +1,14 @@
 //#include "mex.h"
 #include <bits/stdc++.h>
 #include <cmath>
+#include "fgdata.h"
 #include "Eigen/Core"
-//#define OPTIM_ENABLE_EIGEN_WRAPPERS
-//#include "OptimLib/optim.hpp"
-#include "LBFGSpp/LBFGS.h"
-#include "constraints.h"
 
 static void printvec(const Eigen::VectorXd& v) {
     for (double i : v)
         printf("%.4lf ", i);
     printf("\n");
 }
-
-class FGData {
-public:
-    DistConstraints *E, *L, *U;
-    double *w, *f;
-};
 
 // calculates value of objective function at X
 static double objfun(const Eigen::VectorXd& X, FGData* dat) {
@@ -241,50 +232,3 @@ static double fgcalc(const Eigen::VectorXd& x, Eigen::VectorXd* grad, void* dat)
 
     return val;
 }
-
-class FGFunction {
-public:
-    FGData* dat;
-    explicit FGFunction(Eigen::VectorXd& init_x, FGData* d) {
-        dat = d;
-
-        /*
-            re-calculate w[3] how it is done in the matlab code:
-            w(4) = ow(4)*obj/(25*trace(X0'*X0));
-        */
-        double s = 0.0, ow3 = dat->w[3];
-        for (auto a: init_x)
-            s += a*a;
-        dat->w[3] = 0.0;
-        double obval = objfun(init_x, dat),
-               k = (ow3*obval/25.0)*(1.0/s);
-        dat->w[3] = k;
-    }
-
-    double operator()(const Eigen::VectorXd& x, Eigen::VectorXd& grad) const
-    {
-        gradfun(x, dat, &grad);
-        double val = objfun(x, dat);
-        //printvec(x);
-        //printf("(%lf)\n\n", val);
-        return val;
-    }
-
-    double runBFGS(Eigen::VectorXd& init_x) {
-        double out;
-
-        // parameters for LBFGS
-        // TODO: maybe we need to tweak these?
-        LBFGSpp::LBFGSParam p;
-        p.max_iterations = 500;//1000;
-        //p.ftol = 1.0e-14;
-        p.linesearch = LBFGSpp::LBFGS_LINESEARCH_BACKTRACKING_WOLFE;
-        //p.epsilon = 1.0e-14;
-
-        // run the solver
-        LBFGSpp::LBFGSSolver<double, LBFGSpp::LineSearchBacktracking> solver(p);
-        solver.minimize(*this, init_x, out);
-
-        return out;
-    }
-};

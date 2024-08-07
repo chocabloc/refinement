@@ -2,11 +2,13 @@
 
 To run on test data (which is in `testdata.h`), do `g++ -I. -O3 test.cpp -o test`, and then `./test`.
 
-To run on your own data, include `objgradfun.h` and the other stuff, put your data in a `FGData` structure,
-create a `FGFunction` object, and call `runBFGS()` on that. Example:
+To run on your own data, include `fgfunction.h`, put your data in a `FGData` structure,
+create a `FGFunction` object, and call `runBFGS()` on that. The dependencies `LBFGSpp`, `fgdata.h`, and `objgradfun.h` 
+should be present in the same directory, and `Eigen` should be in the include path.
 
+Example usage:
 ```c++
-#include "objgradfun.cpp"
+#include "fgfunction.cpp"
 
 int main() {
     // this is your data
