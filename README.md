@@ -4,7 +4,7 @@ To run on test data (which is in `testdata.h`), do `g++ -I. -O3 test.cpp -o test
 
 To run on your own data, include `fgfunction.h`, put your data in a `FGData` structure,
 create a `FGFunction` object, and call `runBFGS()` on that. The dependencies `LBFGSpp`, `fgdata.h`, and `objgradfun.h` 
-should be present in the same directory, and `Eigen` should be in the include path.
+should be present in the same directory, and `Eigen` should be in your include path.
 
 Example usage:
 ```c++
